@@ -1,0 +1,264 @@
+# hsfB: Cell-type-resolved TF centrality and gene-set enrichment analysis
+
+## 1. Project goal
+
+This project aims to identify **cell types and co-expression modules** in which a **query transcription factor (TF)** (e.g. HSFBs, HSFAs) plays a central regulatory role, and to test whether those modules are **enriched for a target gene set** (e.g. cytokinin-related genes).
+
+Using single-cell or single-nucleus RNA-seq data, the pipeline:
+
+1. constructs cell-type-resolved co-expression networks using **hdWGCNA / WGCNA**,
+2. computes module eigengenes and gene/module membership (kME),
+3. ranks a user-specified TF (`query_tf`) by kME **among all TFs in each module**,
+4. performs enrichment analysis (2x2 contingency table, odds ratio, p/q values) for a target gene set within each module.
+
+The output allows comparison of TF centrality and gene-set enrichment across cell types, modules, datasets, and species.
+
+---
+
+## 2. Environment installation
+
+### 2.1 Conda environment (version-pinned)
+
+> **Important**: `hdWGCNA` is sensitive to `Seurat` / `SeuratObject` versions. This project is tested with:
+>
+> - Seurat **5.3.0**
+> - SeuratObject **5.1.0**
+
+Create and activate the conda environment:
+
+```bash
+git clone https://github.com/yenmr/celltype_TF_centrality.git
+cd celltype_TF_centrality
+
+conda env create -f environment.yml
+conda activate go_wgcna_r
+```
+
+### 2.2 Install hdWGCNA (GitHub)
+
+```bash
+Rscript -e "remotes::install_github('smorabit/hdWGCNA', dependencies = FALSE, upgrade = 'never')"
+```
+
+---
+
+## 3. Repository structure
+
+```text
+.
+└── README.md
+├── environment.yml
+├── resources/                 # mapping tables and gene-set lists
+├── recipes/                   # dataset-specific example scripts (require user-provided RDS)
+├── run_pipeline.sh            # unified entry point (dispatches by species)
+├── Ath_test/                  # toy output folder created by process_Ath_test.sh
+├── lib/                       # shared libraries used by scripts
+├── script/                    # R scripts for hdWGCNA + downstream analysis
+├── scRNA_rds/                 # input Seurat .RDS objects (downloaded / prepared)
+├── process_Ath_test.sh        # quick-start demo using toy dataset
+```
+
+### 3.1 resources/
+This folder contains required mapping tables and gene-set lists used by the analysis scripts, for example:
+- `Cytokinin-golden-list.tsv.gz`: target gene set used for enrichment (cytokinin related list)
+- `hsfB_*.tsv`: species specific HSFB/HSF gene lists
+- `Ath_to_*_besthit.tsv.gz` / `*_besthit.tsv.gz`: cross-species best-hit mapping tables
+- `B73v4_to_B73v5.tsv.gz`, `ITAG4_to_ITAG5_besthit.tsv.gz`: annotation version mapping tables
+
+### 3.2 lib/
+- `Orthogroups_long.tsv.gz`: orthogroup mapping table used for transferring GO annotations
+- `lib_ortho_GO.R`: helper functions for GO mapping and enrichment (orthogroup based)
+
+### 3.3 scRNA_rds/
+Store input Seurat objects here (RDS files). Each process script points to one input RDS.
+
+### 3.4 recipes/
+`recipes/` contains example driver scripts for specific public datasets. These scripts are provided as references and typically require you to download/prepare the corresponding Seurat `.RDS` first.
+
+---
+
+## 4. Download scRNA/snRNA datasets
+
+This repository expects each dataset to be available as a Seurat object (.RDS). Place the RDS file under `scRNA_rds/` (or another path, but keep the process script consistent).
+
+Required contents of each Seurat object:
+- an assay name used for analysis (commonly `SCT` or `RNA`)
+- a metadata column for cell type labels (commonly `celltype`)
+
+Example dataset (Dropbox)
+Download the toy example dataset (~200 MB):
+
+```bash
+cd scRNA_rds
+wget "https://www.dropbox.com/scl/fi/yyl80zb8fn23vu8xgmvqs/Ath_test.rds?rlkey=8fmye93jbjqmuv4xu4pigwwsu&dl=1" -O Ath_test.rds
+```
+
+---
+
+## 5. Run the pipeline
+
+There are two ways to run the pipeline:
+
+### 5.1 Quick start (toy dataset)
+
+This repository includes a toy example configured in `process_Ath_test.sh`.
+
+```bash
+bash process_Ath_test.sh
+```
+
+This should create an output folder such as `Ath_test/` and produce `*_OR.tsv` and `*_GO.tsv` results.
+
+### 5.2 Unified entry point (recommended for your own datasets)
+
+Use `run_pipeline.sh` to run any supported species with the same command interface. It dispatches to the correct species-specific R scripts under `script/`.
+
+```bash
+bash run_pipeline.sh \
+  --species Ath \
+  --dataset Ath_GSE152766_root \
+  --rds scRNA_rds/<YOUR_SEURAT_OBJECT>.RDS \
+  --assay SCT \
+  --celltype celltype
+```
+
+Supported `--species` values (must match R scripts in `script/`):
+- `Ath`, `Mpo`, `Osa`, `Sly`, `Zma`
+
+Internally, `run_pipeline.sh` runs the same 3-step workflow:
+
+1. `script/run_hdWGCNA_<SPECIES>.R`
+2. `script/combine_kME_file.R`
+3. `script/analyze_coexpression_<SPECIES>.R`
+
+### 5.3 Dataset-specific recipes
+
+`recipes/` contains dataset-specific example scripts. These are useful references, but they usually require downloading/preparing the corresponding Seurat `.RDS` first.
+
+---
+
+## 6. Output files and interpretation
+
+Outputs are written under the dataset output directory, for example `Ath_test/`.
+
+### 6.1 Step 1: run_hdWGCNA_<SPECIES>.R
+This step runs hdWGCNA per cell type and writes per-cell-type kME tables under a `kME/` subfolder.
+
+Example:
+
+```text
+<DATASET_DIR>/kME/
+  kME_mature_atrichoblast.tsv
+  kME_mature_cortex.tsv
+  kME_meristem.tsv
+  kME_meristematic_cortex.tsv
+```
+
+Each `kME_*.tsv` contains module membership (kME) values for genes (and TFs) for that specific cell type.
+
+### 6.2 Step 2: combine_kME_file.R
+This step merges all per-cell-type kME tables in `<DATASET_DIR>/kME/` into a single combined table:
+
+- `<DATASET_DIR>/kME_combined.tsv`
+
+This file is used as the input for downstream TF ranking and enrichment.
+
+### 6.3 Step 3: analyze_coexpression_<SPECIES>.R
+This step performs TF centrality ranking, gene-set enrichment, and GO enrichment for modules containing the query TF.
+
+It typically produces:
+- `*_<QUERY_TF>_OR.tsv` (TF/module enrichment summary; one file per query TF)
+- `*_<QUERY_TF>_GO.tsv` (GO enrichment results for query-TF-containing modules; one file per query TF)
+
+### 6.4 GO enrichment result table: `*_GO.tsv`
+
+Example:
+
+```text
+Ath_test/Ath_test_AtHSFB1_GO.tsv
+```
+
+This file contains GO enrichment results for genes in modules that contain the `query_tf` (for the specified `celltype`).
+
+Common columns (clusterProfiler-style):
+
+- `ID` - GO term ID
+- `Description` - GO term name
+- `GeneRatio` - ratio of selected genes annotated to the term (e.g. `29/60`)
+- `BgRatio` - ratio of background genes annotated to the term (e.g. `221/12961`)
+- `RichFactor` - GeneRatio divided by BgRatio
+- `FoldEnrichment` - enrichment fold change
+- `zScore` - enrichment z-score
+- `pvalue` - nominal p-value
+- `p.adjust` - BH adjusted p-value
+- `qvalue` - q-value (if computed)
+- `geneID` - genes contributing to the term (separator: `/`)
+- `Count` - number of genes contributing to the term
+- `ONTOLOGY` - GO ontology (`BP`, `MF`, `CC`)
+- `celltype` - cell type label
+
+### 6.5 Main enrichment result table: `*_OR.tsv`
+ `*_OR.tsv`
+
+Example:
+
+```text
+Ath_test/Ath_test_AtHSFB1_OR.tsv
+```
+
+Columns:
+
+- `celltype` - cell type analyzed (e.g. `Meristem_Trichoblast`)
+- `module` - WGCNA module label
+- `CK_mod` - number of target gene-set genes in the module
+- `CK_out_mod` - number of target gene-set genes outside the module (within tested universe)
+- `nonCK_mod` - number of non-target genes in the module
+- `nonCK_out_mod` - number of non-target genes outside the module
+- `OR` - odds ratio from the 2x2 contingency table
+- `p_value` - Fisher exact test p-value
+- `q_value` - BH adjusted p-value (FDR)
+- `query_tf` - TF evaluated in this run (e.g. `AtHSFA1B`)
+- `kME` - module eigengene membership of `query_tf`
+- `rank_kME_TF` - rank of `query_tf` by kME among TFs in the module (1 = highest)
+- `nTF_module` - total number of TFs in the module
+- `rank_pct_TF` - scaled rank in [0,1], where 1 = best, 0 = worst
+
+Odds ratio definition:
+
+```
+OR = (CK_mod / nonCK_mod) / (CK_out_mod / nonCK_out_mod)
+```
+
+Rank percentage definition:
+
+```
+rank_pct_TF = (nTF_module - rank_kME_TF) / (nTF_module - 1)
+```
+
+---
+
+## 7. Reproducibility notes
+
+- All analyses should be run in the pinned conda environment
+- Record `sessionInfo()` for publication
+- Fix random seeds if metacells or subsampling is used
+- Runtime and memory depend on dataset size (single-cell datasets may require >500 GB RAM)
+
+---
+
+## 8. Troubleshooting
+
+Common issues:
+
+- **hdWGCNA fails to load**: check Seurat / SeuratObject versions
+- **Cell type not found**: verify metadata column names
+- **No enrichment detected**: check gene ID consistency and background universe
+- **High memory usage**: reduce gene set size or metacell parameters
+
+---
+
+## License
+
+This project is released under the MIT License.
+See the LICENSE file for details.
+

@@ -1,0 +1,47 @@
+name: go_wgcna_r
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # Core R
+  - r-base=4.3
+  - r-remotes
+
+  # Seurat stack (PINNED)
+  - r-seurat=5.3.0
+  - r-seuratobject=5.1.0
+
+  # Critical compiled deps (avoid CRAN source build failures)
+  - r-igraph
+  - r-leidenbase
+
+  # WGCNA + plotting/tidy
+  - r-wgcna
+  - r-dplyr
+  - r-readr
+  - r-tidyr
+  - r-tibble
+  - r-purrr
+  - r-stringr
+  - r-magrittr
+  - r-ggplot2
+  - r-cowplot
+  - r-patchwork
+  - r-tidyverse
+  - r-harmony
+  - r-enrichr
+  - r-tester
+  - r-proxy
+
+  # GO / enrichment (Bioconductor)
+  - bioconductor-clusterprofiler
+  - bioconductor-dose
+  - bioconductor-annotationdbi
+  - bioconductor-go.db
+  - bioconductor-org.at.tair.db
+
+  # Optional (only if your scripts need them)
+  - bioconductor-genomicranges
+  - bioconductor-geneoverlap
+  - bioconductor-ucell
+

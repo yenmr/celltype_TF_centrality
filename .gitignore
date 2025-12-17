@@ -1,0 +1,12 @@
+# R temporary files
+.Rhistory
+.RData
+.Rproj.user
+
+# conda / python
+*.env
+.env/
+
+# OS files
+.DS_Store
+Thumbs.db
