@@ -60,8 +60,8 @@ run_analysis <- function(df, target_hsf) {
     arrange(pvalue) %>%                     # sort by q
     rename(
       CK_mod     = a,
-      CK_out_mod      = b,
-      nonCK_mod  = c,
+      nonCK_mod  = b,
+      CK_out_mod      = c,
       nonCK_out_mod   = d,
       rank_kME_TF   = tf_rank,
       nTF_module = tf_total,
@@ -71,8 +71,6 @@ run_analysis <- function(df, target_hsf) {
       kME_query  = kME
     ) %>% mutate(query_tf = hsf_name[target_hsf]) %>%
     dplyr::select(celltype, module, CK_mod, CK_out_mod, nonCK_mod, nonCK_out_mod, OR, p_value, q_value, query_tf, kME_query, rank_kME_TF, nTF_module, rank_pct_TF)
-    
-  OR_cytokinin_outfile <- paste0(prefix,"_",hsf_name[target_hsf],"_OR.tsv")
   write_tsv(df_stats, OR_cytokinin_outfile)
 
   #GO analysis

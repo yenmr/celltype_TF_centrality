@@ -78,8 +78,8 @@ run_analysis <- function(df, target_hsf) {
     arrange(pvalue) %>%                     # sort by q
     rename(
       CK_mod     = a,
-      CK_out_mod      = b,
-      nonCK_mod  = c,
+      nonCK_mod  = b,
+      CK_out_mod      = c,
       nonCK_out_mod   = d,
       rank_kME_TF   = tf_rank,
       nTF_module = tf_total,
